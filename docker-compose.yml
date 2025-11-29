@@ -3,40 +3,46 @@ version: "3.9"
 services:
   # --- Servicio de Backend (Node, Python o PHP) ---
   web:
-    build: ./app  # Construye la imagen desde el Dockerfile en la carpeta ./app
+    build: ./app
     container_name: backend_app
     ports:
-      - "8000:8000" # Expone el puerto 8000. (Cambia el 8000 interno si tu app corre en otro puerto)
+      - "8000:8000"
     volumes:
-      - ./app:/app  # Sincroniza tu carpeta local 'app' con '/app' dentro del contenedor (para desarrollo)
+      - ./app:/app
     environment:
-      # Variables de entorno para que tu app sepa cómo conectarse a la BBDD
       - DB_HOST=db
       - DB_USER=root
       - DB_PASSWORD=1234
       - DB_NAME=testdb
     depends_on:
       db:
-        # No inicies este servicio 'web' hasta que 'db' esté 'healthy'
-        condition: service_healthy
+        condition: service_healthy # Espera a que el healthcheck de la DB pase a 'healthy'
+    
+    # --- AQUI ESTÁ EL HEALTHCHECK AGREGADO ---
+    healthcheck:
+      # Intenta hacer una petición a la raíz de tu app.
+      # NOTA: Tu imagen (Dockerfile) debe tener 'curl' instalado.
+      test: ["CMD", "curl", "-f", "http://localhost:8000"]
+      interval: 30s       # Cada cuánto tiempo ejecutar el test
+      timeout: 10s        # Tiempo máximo de espera por respuesta
+      retries: 3          # Cuántos fallos seguidos para marcar como 'unhealthy'
+      start_period: 10s   # Tiempo de gracia al inicio antes de empezar a chequear
 
   # --- Servicio de Base de Datos (MySQL) ---
   db:
-    image: mysql:8.0 # Puedes cambiar esto por mariadb:latest sin problemas
+    image: mysql:8.0
     container_name: mysql_db
     restart: always
     environment:
-      # Contraseña de 'root'. ¡La app 'web' la usa para conectarse!
       MYSQL_ROOT_PASSWORD: 1234
-      # Crea esta base de datos automáticamente al iniciar
       MYSQL_DATABASE: testdb
     volumes:
-      # 1. Ejecuta este script .sql la primera vez que se crea el contenedor
       - ./db/init.sql:/docker-entrypoint-initdb.d/init.sql
-      # 2. Persiste los datos de la BBDD en un volumen nombrado
       - mysql_data_volume:/var/lib/mysql
+    
+    # --- HEALTHCHECK EXISTENTE (OPTIMIZADO) ---
     healthcheck:
-      # Comprueba si MySQL está listo antes de permitir que 'web' se conecte
+      # Verifica que el servicio responda al ping
       test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-p1234"]
       interval: 10s
       timeout: 5s
